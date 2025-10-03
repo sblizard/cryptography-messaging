@@ -3,8 +3,10 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from messenger import MessengerServer
 from messenger import MessengerClient
 
+
 def error(s):
-  print("=== ERROR: " + s)
+    print("=== ERROR: " + s)
+
 
 print("Initializing Server")
 server_sign_sk = ec.generate_private_key(ec.SECP256R1())
@@ -104,7 +106,7 @@ print("Testing handling an incorrect message")
 
 h, c = alice.sendMessage("bob", "malformed message test")
 m = bob.receiveMessage("alice", h, ct)
-if m != None:
+if m is not None:
     error("didn't reject incorrect message")
 else:
     print("success!")
