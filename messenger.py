@@ -2,6 +2,7 @@ import os
 import pickle
 import string
 
+
 class MessengerServer:
     def __init__(self, server_signing_key, server_decryption_key):
         self.server_signing_key = server_signing_key
@@ -14,6 +15,7 @@ class MessengerServer:
     def signCert(self, cert):
         raise Exception("not implemented!")
         return
+
 
 class MessengerClient:
 

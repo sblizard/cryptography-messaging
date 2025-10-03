@@ -1,0 +1,14 @@
+[tool.black]
+line-length = 88
+# Target the Python versions you support. Adjust if your project uses a different version.
+target-version = ['py310']
+include = '\\.pyi?$'
+exclude = '''
+/(
+  \.git
+| \.venv
+| build
+| dist
+| __pycache__
+)/
+'''
