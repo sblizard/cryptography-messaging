@@ -2,6 +2,12 @@ import os
 import pickle
 import string
 
+from cryptography.hazmat.primitives.asymmetric.ec import (
+    EllipticCurvePrivateKey,
+    EllipticCurvePublicKey,
+    ECDSA,
+)
+
 
 class Certificate:
     def __init__(self, name, pk):
@@ -19,7 +25,11 @@ class Certificate:
 
 
 class MessengerServer:
-    def __init__(self, server_signing_key, server_decryption_key):
+    def __init__(
+        self,
+        server_signing_key: EllipticCurvePrivateKey,
+        server_decryption_key: EllipticCurvePrivateKey,
+    ):
         self.server_signing_key = server_signing_key
         self.server_decryption_key = server_decryption_key
 
@@ -34,29 +44,33 @@ class MessengerServer:
 
 class MessengerClient:
 
-    def __init__(self, name, server_signing_pk, server_encryption_pk):
+    def __init__(
+        self,
+        name,
+        server_signing_pk: EllipticCurvePublicKey,
+        server_encryption_pk: EllipticCurvePublicKey,
+    ):
         self.name = name
         self.server_signing_pk = server_signing_pk
         self.server_encryption_pk = server_encryption_pk
-        self.conns = {}
-        self.certs = {}
+        self.conns: dict[str, EllipticCurvePublicKey] = {}  # TYPES ARE WIP
+        self.certs: dict[str, Certificate] = {}  # TYPES ARE WIP
 
     def generateCertificate(self) -> Certificate:
-        raise Exception("not implemented!")
         return Certificate(self.name, "public_key")
 
-    def receiveCertificate(self, certificate, signature):
+    def receiveCertificate(self, certificate: Certificate, signature: bytes):
         raise Exception("not implemented!")
         return
 
-    def sendMessage(self, name, message):
+    def sendMessage(self, name: str, message: str):
         raise Exception("not implemented!")
         return
 
-    def receiveMessage(self, name, header, ciphertext):
+    def receiveMessage(self, name: str, header: bytes, ciphertext: bytes):
         raise Exception("not implemented!")
         return
 
-    def report(self, name, message):
+    def report(self, name: str, message: str):
         raise Exception("not implemented!")
         return
