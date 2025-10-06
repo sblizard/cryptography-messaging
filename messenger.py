@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     generate_private_key,
 )
 from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives import serialization
 
 
 class Certificate:
@@ -41,8 +42,14 @@ class MessengerServer:
         return
 
     def signCert(self, cert: Certificate) -> bytes:
+        public_key_bytes: bytes = cert.getPublicKey().public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint,
+        )
+        cert_data: bytes = cert.getUserName().encode("utf-8") + public_key_bytes
+
         return self.server_signing_key.sign(
-            data=pickle.dumps(cert), signature_algorithm=ECDSA(SHA256())
+            data=cert_data, signature_algorithm=ECDSA(SHA256())
         )
 
 
