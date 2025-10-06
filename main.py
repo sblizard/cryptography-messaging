@@ -59,7 +59,7 @@ else:
 print("Testing Reporting")
 content: str = "inappropriate message contents"
 reportPT, reportCT = alice.report("Bob", content)
-decryptedReport = server.decryptReport(reportCT)
+decryptedReport: str = server.decryptReport(reportCT)
 if decryptedReport != reportPT:
     error("report did not decrypt properly")
     print(reportPT)

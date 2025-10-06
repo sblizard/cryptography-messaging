@@ -33,11 +33,11 @@ class MessengerServer:
         self.server_signing_key = server_signing_key
         self.server_decryption_key = server_decryption_key
 
-    def decryptReport(self, ct):
+    def decryptReport(self, ct: bytes) -> str:
         raise Exception("not implemented!")
         return
 
-    def signCert(self, cert):
+    def signCert(self, cert: Certificate) -> bytes:
         raise Exception("not implemented!")
         return
 
@@ -59,18 +59,18 @@ class MessengerClient:
     def generateCertificate(self) -> Certificate:
         return Certificate(self.name, "public_key")
 
-    def receiveCertificate(self, certificate: Certificate, signature: bytes):
+    def receiveCertificate(self, certificate: Certificate, signature: bytes) -> None:
         raise Exception("not implemented!")
         return
 
-    def sendMessage(self, name: str, message: str):
+    def sendMessage(self, name: str, message: str) -> tuple[bytes, bytes]:
         raise Exception("not implemented!")
         return
 
-    def receiveMessage(self, name: str, header: bytes, ciphertext: bytes):
+    def receiveMessage(self, name: str, header: bytes, ciphertext: bytes) -> str | None:
         raise Exception("not implemented!")
         return
 
-    def report(self, name: str, message: str):
+    def report(self, name: str, message: str) -> tuple[str, bytes]:
         raise Exception("not implemented!")
         return
