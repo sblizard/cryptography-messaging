@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     SECP256R1,
     generate_private_key,
 )
+from cryptography.hazmat.primitives.hashes import SHA256
 
 
 class Certificate:
@@ -40,8 +41,9 @@ class MessengerServer:
         return
 
     def signCert(self, cert: Certificate) -> bytes:
-        raise Exception("not implemented!")
-        return
+        return self.server_signing_key.sign(
+            data=pickle.dumps(cert), signature_algorithm=ECDSA(SHA256())
+        )
 
 
 class MessengerClient:
