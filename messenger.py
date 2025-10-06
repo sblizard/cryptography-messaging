@@ -6,6 +6,8 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     EllipticCurvePrivateKey,
     EllipticCurvePublicKey,
     ECDSA,
+    SECP256R1,
+    generate_private_key,
 )
 
 
@@ -30,8 +32,8 @@ class MessengerServer:
         server_signing_key: EllipticCurvePrivateKey,
         server_decryption_key: EllipticCurvePrivateKey,
     ):
-        self.server_signing_key = server_signing_key
-        self.server_decryption_key = server_decryption_key
+        self.server_signing_key: EllipticCurvePrivateKey = server_signing_key
+        self.server_decryption_key: EllipticCurvePrivateKey = server_decryption_key
 
     def decryptReport(self, ct: bytes) -> str:
         raise Exception("not implemented!")
@@ -50,14 +52,17 @@ class MessengerClient:
         server_signing_pk: EllipticCurvePublicKey,
         server_encryption_pk: EllipticCurvePublicKey,
     ):
-        self.name = name
-        self.server_signing_pk = server_signing_pk
-        self.server_encryption_pk = server_encryption_pk
+        self.name: str = name
+        self.server_signing_pk: EllipticCurvePublicKey = server_signing_pk
+        self.server_encryption_pk: EllipticCurvePublicKey = server_encryption_pk
         self.conns: dict[str, EllipticCurvePublicKey] = {}  # TYPES ARE WIP
         self.certs: dict[str, Certificate] = {}  # TYPES ARE WIP
 
+        self.DHs: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
+        self.DHr: dict[str, EllipticCurvePublicKey] = {}  # TYPES ARE WIP
+
     def generateCertificate(self) -> Certificate:
-        return Certificate(self.name, "public_key")
+        return Certificate(self.name, self.DHs.public_key())
 
     def receiveCertificate(self, certificate: Certificate, signature: bytes) -> None:
         raise Exception("not implemented!")
