@@ -74,8 +74,19 @@ class MessengerClient:
         return Certificate(self.name, self.DHs.public_key())
 
     def receiveCertificate(self, certificate: Certificate, signature: bytes) -> None:
-        raise Exception("not implemented!")
-        return
+        try:
+            self.server_signing_pk.verify(
+                signature=signature,
+                data=certificate.getUserName().encode("utf-8")
+                + certificate.getPublicKey().public_bytes(
+                    encoding=serialization.Encoding.X962,
+                    format=serialization.PublicFormat.UncompressedPoint,
+                ),
+                signature_algorithm=ECDSA(SHA256()),
+            )
+            self.certs[certificate.getUserName()] = certificate.getPublicKey()
+        except:
+            raise Exception("certificate verification failed")
 
     def sendMessage(self, name: str, message: str) -> tuple[bytes, bytes]:
         raise Exception("not implemented!")
