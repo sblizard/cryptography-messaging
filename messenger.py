@@ -3,6 +3,21 @@ import pickle
 import string
 
 
+class Certificate:
+    def __init__(self, name, pk):
+        self.__name = name
+        self.__pk = pk
+
+    def __toString__(self):
+        return f"Certificate({self.__name}, {self.__pk})"
+
+    def getUserName(self):
+        return self.__name
+
+    def getPublicKey(self):
+        return self.__pk
+
+
 class MessengerServer:
     def __init__(self, server_signing_key, server_decryption_key):
         self.server_signing_key = server_signing_key
@@ -26,9 +41,9 @@ class MessengerClient:
         self.conns = {}
         self.certs = {}
 
-    def generateCertificate(self):
+    def generateCertificate(self) -> Certificate:
         raise Exception("not implemented!")
-        return
+        return Certificate(self.name, "public_key")
 
     def receiveCertificate(self, certificate, signature):
         raise Exception("not implemented!")

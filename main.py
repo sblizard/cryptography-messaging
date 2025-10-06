@@ -1,7 +1,11 @@
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.ec import (
+    generate_private_key,
+    EllipticCurvePrivateKey,
+    SECP256R1,
+    EllipticCurvePublicKey,
+)
 
-from messenger import MessengerServer
-from messenger import MessengerClient
+from messenger import MessengerServer, MessengerClient, Certificate
 
 
 def error(s):
@@ -9,27 +13,27 @@ def error(s):
 
 
 print("Initializing Server")
-server_sign_sk = ec.generate_private_key(ec.SECP256R1())
-server_enc_sk = ec.generate_private_key(ec.SECP256R1())
-server = MessengerServer(server_sign_sk, server_enc_sk)
+server_sign_sk: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
+server_enc_sk: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
+server: MessengerServer = MessengerServer(server_sign_sk, server_enc_sk)
 
-server_sign_pk = server_sign_sk.public_key()
-server_enc_pk = server_enc_sk.public_key()
+server_sign_pk: EllipticCurvePublicKey = server_sign_sk.public_key()
+server_enc_pk: EllipticCurvePublicKey = server_enc_sk.public_key()
 
 print("Initializing Users")
-alice = MessengerClient("alice", server_sign_pk, server_enc_pk)
-bob = MessengerClient("bob", server_sign_pk, server_enc_pk)
-carol = MessengerClient("carol", server_sign_pk, server_enc_pk)
+alice: MessengerClient = MessengerClient("alice", server_sign_pk, server_enc_pk)
+bob: MessengerClient = MessengerClient("bob", server_sign_pk, server_enc_pk)
+carol: MessengerClient = MessengerClient("carol", server_sign_pk, server_enc_pk)
 
 print("Generating Certs")
-certA = alice.generateCertificate()
-certB = bob.generateCertificate()
-certC = carol.generateCertificate()
+certA: Certificate = alice.generateCertificate()
+certB: Certificate = bob.generateCertificate()
+certC: Certificate = carol.generateCertificate()
 
 print("Signing Certs")
-sigA = server.signCert(certA)
-sigB = server.signCert(certB)
-sigC = server.signCert(certC)
+sigA: bytes = server.signCert(certA)
+sigB: bytes = server.signCert(certB)
+sigC: bytes = server.signCert(certC)
 
 print("Distributing Certs")
 try:
@@ -43,8 +47,8 @@ except:
     error("certificate verification issue")
 
 print("Testing incorrect cert issuance")
-mallory = MessengerClient("mallory", server_sign_pk, server_enc_pk)
-certM = mallory.generateCertificate()
+mallory: MessengerClient = MessengerClient("mallory", server_sign_pk, server_enc_pk)
+certM: Certificate = mallory.generateCertificate()
 try:
     alice.receiveCertificate(certM, sigC)
 except:
@@ -53,7 +57,7 @@ else:
     error("accepted certificate with incorrect signature")
 
 print("Testing Reporting")
-content = "inappropriate message contents"
+content: str = "inappropriate message contents"
 reportPT, reportCT = alice.report("Bob", content)
 decryptedReport = server.decryptReport(reportCT)
 if decryptedReport != reportPT:
@@ -65,37 +69,37 @@ else:
 
 print("Testing a conversation")
 header, ct = alice.sendMessage("bob", "Hi Bob!")
-msg = bob.receiveMessage("alice", header, ct)
+msg: str | None = bob.receiveMessage("alice", header, ct)
 if msg != "Hi Bob!":
     error("message 1 was not decrypted correctly")
 
 header, ct = alice.sendMessage("bob", "Hi again Bob!")
-msg = bob.receiveMessage("alice", header, ct)
+msg: str | None = bob.receiveMessage("alice", header, ct)
 if msg != "Hi again Bob!":
     error("message 2  was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "Hey Alice!")
-msg = alice.receiveMessage("bob", header, ct)
+msg: str | None = alice.receiveMessage("bob", header, ct)
 if msg != "Hey Alice!":
     error("message 3 was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "Can't talk now")
-msg = alice.receiveMessage("bob", header, ct)
+msg: str | None = alice.receiveMessage("bob", header, ct)
 if msg != "Can't talk now":
     error("message 4 was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "Started the homework too late :(")
-msg = alice.receiveMessage("bob", header, ct)
+msg: str | None = alice.receiveMessage("bob", header, ct)
 if msg != "Started the homework too late :(":
     error("message 5 was not decrypted correctly")
 
 header, ct = alice.sendMessage("bob", "Ok, bye Bob!")
-msg = bob.receiveMessage("alice", header, ct)
+msg: str | None = bob.receiveMessage("alice", header, ct)
 if msg != "Ok, bye Bob!":
     error("message 6  was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "I'll remember to start early next time!")
-msg = alice.receiveMessage("bob", header, ct)
+msg: str | None = alice.receiveMessage("bob", header, ct)
 if msg != "I'll remember to start early next time!":
     error("message 7 was not decrypted correctly")
 
@@ -105,7 +109,7 @@ print("conversation completed!")
 print("Testing handling an incorrect message")
 
 h, c = alice.sendMessage("bob", "malformed message test")
-m = bob.receiveMessage("alice", h, ct)
+m: str | None = bob.receiveMessage("alice", h, ct)
 if m is not None:
     error("didn't reject incorrect message")
 else:
