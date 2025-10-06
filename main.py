@@ -74,32 +74,32 @@ if msg != "Hi Bob!":
     error("message 1 was not decrypted correctly")
 
 header, ct = alice.sendMessage("bob", "Hi again Bob!")
-msg: str | None = bob.receiveMessage("alice", header, ct)
+msg = bob.receiveMessage("alice", header, ct)
 if msg != "Hi again Bob!":
     error("message 2  was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "Hey Alice!")
-msg: str | None = alice.receiveMessage("bob", header, ct)
+msg = alice.receiveMessage("bob", header, ct)
 if msg != "Hey Alice!":
     error("message 3 was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "Can't talk now")
-msg: str | None = alice.receiveMessage("bob", header, ct)
+msg = alice.receiveMessage("bob", header, ct)
 if msg != "Can't talk now":
     error("message 4 was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "Started the homework too late :(")
-msg: str | None = alice.receiveMessage("bob", header, ct)
+msg = alice.receiveMessage("bob", header, ct)
 if msg != "Started the homework too late :(":
     error("message 5 was not decrypted correctly")
 
 header, ct = alice.sendMessage("bob", "Ok, bye Bob!")
-msg: str | None = bob.receiveMessage("alice", header, ct)
+msg = bob.receiveMessage("alice", header, ct)
 if msg != "Ok, bye Bob!":
     error("message 6  was not decrypted correctly")
 
 header, ct = bob.sendMessage("alice", "I'll remember to start early next time!")
-msg: str | None = alice.receiveMessage("bob", header, ct)
+msg = alice.receiveMessage("bob", header, ct)
 if msg != "I'll remember to start early next time!":
     error("message 7 was not decrypted correctly")
 
@@ -109,7 +109,7 @@ print("conversation completed!")
 print("Testing handling an incorrect message")
 
 h, c = alice.sendMessage("bob", "malformed message test")
-m: str | None = bob.receiveMessage("alice", h, ct)
+m = bob.receiveMessage("alice", h, ct)
 if m is not None:
     error("didn't reject incorrect message")
 else:
