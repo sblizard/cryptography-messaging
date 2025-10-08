@@ -38,16 +38,24 @@ class Connection:
     ):
         self.DHs_sk: EllipticCurvePrivateKey = DHs_sk
         self.DHr_pk: EllipticCurvePublicKey = DHr_pk
-        self.chain_key: bytes = b""
-        self.chain_counter: int = 0
+        self.RK, self.CKs = self.KDF_RK(dh_out=self.diffieHellman(DHs_sk, DHr_pk))
+        self.CKr: bytes = b""
+        self.Ns: int = 0
+        self.Nr: int = 0
+        self.PN: int = 0
 
-    def updateChainKey(self, diffie_hellman_output: bytes) -> bytes:
+    def KDF_RK(self, dh_out: bytes) -> tuple[bytes, bytes]:
         hkdf: HKDF = HKDF(
-            SHA256(), length=32, salt=self.chain_key, info=b"handshake data"
-        )
-        self.chain_key = hkdf.derive(diffie_hellman_output)
-        self.chain_counter += 1
-        return self.chain_key
+            SHA256(), length=32, salt=self.RK, info=b"messenger kdf"
+        )  # NOTE: what to use for info?
+        ck: bytes = hkdf.derive(dh_out)
+        rk: bytes = ck
+        return ck, rk
+
+    def diffieHellman(
+        self, DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey
+    ) -> bytes:
+        return DHs_sk.exchange(ECDH(), DHr_pk)
 
 
 class MessengerServer:
