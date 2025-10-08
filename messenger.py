@@ -22,6 +22,9 @@ class MessageHeader:
         self.pn = pn
         self.n = n
 
+    def __str__(self):
+        return f"MessageHeader(dh={self.dh}, pn={self.pn}, n={self.n})"
+
     @staticmethod
     def serialize(header: "MessageHeader") -> bytes:
         return (
