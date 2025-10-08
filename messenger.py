@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 class Certificate:
@@ -52,10 +53,22 @@ class Connection:
         rk: bytes = ck
         return ck, rk
 
+    def KDF_CK(self, ck: bytes) -> bytes:
+        hkdf: HKDF = HKDF(
+            SHA256(), length=32, salt=ck, info=b"messenger kdf"
+        )  # NOTE: what to use for info?
+        return hkdf.derive(ck)
+
     def DH_exchange(
         self, DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey
     ) -> bytes:
         return DHs_sk.exchange(ECDH(), DHr_pk)
+
+    def encryptMessage(self, mk: bytes, plaintext: str, message_counter: int) -> bytes:
+        aesgcm: AESGCM = AESGCM(mk)
+        return aesgcm.encrypt(
+            message_counter.to_bytes(12, "big"), plaintext.encode("utf-8"), None
+        )
 
 
 class MessengerServer:
