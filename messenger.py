@@ -16,6 +16,13 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
+class MessageHeader:
+    def __init__(self, dh_public_key: EllipticCurvePublicKey, pn: int, n: int):
+        self.dh = dh_public_key
+        self.pn = pn
+        self.n = n
+
+
 class Certificate:
     def __init__(self, name, pk):
         self.__name = name
@@ -39,36 +46,28 @@ class Connection:
     ):
         self.DHs_sk: EllipticCurvePrivateKey = DHs_sk
         self.DHr_pk: EllipticCurvePublicKey = DHr_pk
-        self.RK, self.CKs = self.KDF_RK(dh_out=self.DH_exchange(DHs_sk, DHr_pk))
+        self.RK, self.CKs = KDF_RK(rk=b"", dh_out=DH(DHs_sk, DHr_pk))
         self.CKr: bytes = b""
         self.Ns: int = 0
         self.Nr: int = 0
         self.PN: int = 0
+        self.mk: bytes = b""
 
-    def KDF_RK(self, dh_out: bytes) -> tuple[bytes, bytes]:
-        hkdf: HKDF = HKDF(
-            SHA256(), length=32, salt=self.RK, info=b"messenger kdf"
-        )  # NOTE: what to use for info?
-        ck: bytes = hkdf.derive(dh_out)
-        rk: bytes = ck
-        return ck, rk
+    def __str__(self):
+        return f"Connection(DHs_sk={self.DHs_sk}, DHr_pk={self.DHr_pk}, RK={self.RK}, CKs={self.CKs}, CKr={self.CKr}, Ns={self.Ns}, Nr={self.Nr}, PN={self.PN}, mk={self.mk})"
 
-    def KDF_CK(self, ck: bytes) -> bytes:
-        hkdf: HKDF = HKDF(
-            SHA256(), length=32, salt=ck, info=b"messenger kdf"
-        )  # NOTE: what to use for info?
-        return hkdf.derive(ck)
+    def RatchetSendKey(self) -> tuple[int, bytes]:
+        self.CKs, self.mk = KDF_CK(ck=self.CKs)
+        Ns = self.Ns
+        self.Ns += 1
+        return Ns, self.mk
 
-    def DH_exchange(
-        self, DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey
-    ) -> bytes:
-        return DHs_sk.exchange(ECDH(), DHr_pk)
-
-    def encryptMessage(self, mk: bytes, plaintext: str, message_counter: int) -> bytes:
-        aesgcm: AESGCM = AESGCM(mk)
-        return aesgcm.encrypt(
-            message_counter.to_bytes(12, "big"), plaintext.encode("utf-8"), None
-        )
+    def RatchetEncrypt(
+        self, plaintext: str, associated_data: bytes
+    ) -> tuple[MessageHeader, bytes]:
+        self.Ns, self.mk = self.RatchetSendKey()
+        header: MessageHeader = HEADER(self.DHs_sk, self.PN, self.Ns)
+        return header, ENCRYPT(self.mk, plaintext, CONCAT(associated_data, header))
 
 
 class MessengerServer:
@@ -79,6 +78,9 @@ class MessengerServer:
     ):
         self.server_signing_key: EllipticCurvePrivateKey = server_signing_key
         self.server_decryption_key: EllipticCurvePrivateKey = server_decryption_key
+
+    def __str__(self):
+        return f"MessengerServer(server_signing_key={self.server_signing_key}, server_decryption_key={self.server_decryption_key})"
 
     def decryptReport(self, ct: bytes) -> str:
         raise Exception("not implemented!")
@@ -97,7 +99,6 @@ class MessengerServer:
 
 
 class MessengerClient:
-
     def __init__(
         self,
         name,
@@ -112,6 +113,9 @@ class MessengerClient:
 
         self.DHs: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
         self.DHr: dict[str, EllipticCurvePublicKey] = {}
+
+    def __str__(self) -> str:
+        return f"MessengerClient(name={self.name}, server_signing_pk={self.server_signing_pk}, server_encryption_pk={self.server_encryption_pk}, conns={self.conns}, certs={self.certs}, DHs={self.DHs}, DHr={self.DHr})"
 
     def generateCertificate(self) -> Certificate:
         return Certificate(self.name, self.DHs.public_key())
@@ -143,3 +147,52 @@ class MessengerClient:
     def report(self, name: str, message: str) -> tuple[str, bytes]:
         raise Exception("not implemented!")
         return
+
+
+def GENERATE_DH() -> EllipticCurvePrivateKey:
+    return generate_private_key(SECP256R1())
+
+
+def KDF_RK(rk: bytes, dh_out: bytes) -> tuple[bytes, bytes]:
+    hkdf: HKDF = HKDF(
+        SHA256(), length=32, salt=rk, info=b"messenger kdf"
+    )  # NOTE: what to use for info?
+    ck: bytes = hkdf.derive(dh_out)
+    rk = ck
+    return ck, rk
+
+
+def KDF_CK(ck: bytes) -> tuple[bytes, bytes]:
+    hkdf: HKDF = HKDF(
+        SHA256(), length=64, salt=ck, info=b"messenger kdf"
+    )  # NOTE: what to use for info?
+    return hkdf.derive(ck)[:32], hkdf.derive(ck)[32:]
+
+
+def DH(DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey) -> bytes:
+    return DHs_sk.exchange(ECDH(), DHr_pk)
+
+
+def HEADER(dh_pair: EllipticCurvePrivateKey, pn: int, ns: int) -> MessageHeader:
+    return MessageHeader(dh_pair.public_key(), pn, ns)
+
+
+def CONCAT(associated_data: bytes, header: MessageHeader) -> bytes:
+    header_bytes: bytes = (
+        header.dh.public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint,
+        )
+        + header.pn.to_bytes(4, "big")
+        + header.n.to_bytes(4, "big")
+    )
+    ad_length = len(associated_data).to_bytes(4, "big")
+
+    return ad_length + associated_data + header_bytes
+
+
+def ENCRYPT(mk: bytes, plaintext: str, associated_data: bytes) -> bytes:
+    aesgcm: AESGCM = AESGCM(mk)
+    nonce: bytes = os.urandom(12)
+    ct: bytes = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), associated_data)
+    return nonce + ct
