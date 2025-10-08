@@ -8,7 +8,9 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     ECDSA,
     SECP256R1,
     generate_private_key,
+    ECDH,
 )
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives import serialization
 
@@ -26,6 +28,26 @@ class Certificate:
 
     def getPublicKey(self):
         return self.__pk
+
+
+class Connection:
+    def __init__(
+        self,
+        DHs_sk: EllipticCurvePrivateKey,
+        DHr_pk: EllipticCurvePublicKey,
+    ):
+        self.DHs_sk: EllipticCurvePrivateKey = DHs_sk
+        self.DHr_pk: EllipticCurvePublicKey = DHr_pk
+        self.chain_key: bytes = b""
+        self.chain_counter: int = 0
+
+    def updateChainKey(self, diffie_hellman_output: bytes) -> bytes:
+        hkdf: HKDF = HKDF(
+            SHA256(), length=32, salt=self.chain_key, info=b"handshake data"
+        )
+        self.chain_key = hkdf.derive(diffie_hellman_output)
+        self.chain_counter += 1
+        return self.chain_key
 
 
 class MessengerServer:
@@ -64,11 +86,11 @@ class MessengerClient:
         self.name: str = name
         self.server_signing_pk: EllipticCurvePublicKey = server_signing_pk
         self.server_encryption_pk: EllipticCurvePublicKey = server_encryption_pk
-        self.conns: dict[str, EllipticCurvePublicKey] = {}  # TYPES ARE WIP
-        self.certs: dict[str, Certificate] = {}  # TYPES ARE WIP
+        self.conns: dict[str, EllipticCurvePublicKey] = {}
+        self.certs: dict[str, Certificate] = {}
 
         self.DHs: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
-        self.DHr: dict[str, EllipticCurvePublicKey] = {}  # TYPES ARE WIP
+        self.DHr: dict[str, EllipticCurvePublicKey] = {}
 
     def generateCertificate(self) -> Certificate:
         return Certificate(self.name, self.DHs.public_key())
@@ -84,13 +106,14 @@ class MessengerClient:
                 ),
                 signature_algorithm=ECDSA(SHA256()),
             )
-            self.certs[certificate.getUserName()] = certificate.getPublicKey()
+            # NOTE: Is it okay to store a certiifcate under user name? ie can we assume unique user names?
+            self.certs[certificate.getUserName()] = certificate
         except:
             raise Exception("certificate verification failed")
 
     def sendMessage(self, name: str, message: str) -> tuple[bytes, bytes]:
-        raise Exception("not implemented!")
-        return
+
+        return b"", b""
 
     def receiveMessage(self, name: str, header: bytes, ciphertext: bytes) -> str | None:
         raise Exception("not implemented!")
