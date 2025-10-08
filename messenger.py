@@ -22,23 +22,31 @@ class MessageHeader:
         self.pn = pn
         self.n = n
 
-    def serialize(self) -> bytes:
+    @staticmethod
+    def serialize(header: "MessageHeader") -> bytes:
         return (
-            self.dh.public_bytes(
+            header.dh.public_bytes(
                 encoding=serialization.Encoding.X962,
                 format=serialization.PublicFormat.UncompressedPoint,
             )
-            + self.pn.to_bytes(4, "big")
-            + self.n.to_bytes(4, "big")
+            + header.pn.to_bytes(4, "big")
+            + header.n.to_bytes(4, "big")
         )
+
+    @staticmethod
+    def deserialize(data: bytes) -> "MessageHeader":
+        dh_pk = EllipticCurvePublicKey.from_encoded_point(SECP256R1(), data[:65])
+        pn = int.from_bytes(data[65:69], "big")
+        n = int.from_bytes(data[69:73], "big")
+        return MessageHeader(dh_pk, pn, n)
 
 
 class Certificate:
-    def __init__(self, name, pk):
+    def __init__(self, name: str, pk: EllipticCurvePublicKey):
         self.__name = name
         self.__pk = pk
 
-    def __toString__(self):
+    def __str__(self):
         return f"Certificate({self.__name}, {self.__pk})"
 
     def getUserName(self):
@@ -104,6 +112,32 @@ class Connection:
         self.Ns, self.mk = self.RatchetSendKey()
         header: MessageHeader = HEADER(self.DHs_sk, self.PN, self.Ns)
         return header, ENCRYPT(self.mk, plaintext, CONCAT(associated_data, header))
+
+    def RatchetReceiveKey(self, header: MessageHeader) -> bytes:
+        if header.dh != self.DHr_pk:
+            self.DHRatchet(header)
+        if self.CKr is None:
+            raise Exception("CKr is None")
+        self.CKr, self.mk = KDF_CK(self.CKr)
+        self.Nr += 1
+        return self.mk
+
+    def RatchetDecrypt(
+        self, header: MessageHeader, ciphertext: bytes, associated_data: bytes
+    ) -> str:
+        mk: bytes = self.RatchetReceiveKey(header)
+        return DECRYPT(mk, ciphertext, CONCAT(associated_data, header))
+
+    def DHRatchet(self, header: MessageHeader):
+        if self.DHs_sk is None or self.RK is None:
+            raise Exception("DHRatchet precondition failed")
+        self.PN = self.Ns
+        self.Ns = 0
+        self.Nr = 0
+        self.DHr_pk = header.dh
+        self.RK, self.CKr = KDF_RK(self.RK, DH(self.DHs_sk, self.DHr_pk))
+        self.DHs_sk = GENERATE_DH()
+        self.RK, self.CKs = KDF_RK(self.RK, DH(self.DHs_sk, self.DHr_pk))
 
 
 class MessengerServer:
@@ -190,11 +224,25 @@ class MessengerClient:
             associated_data=self.name.encode("utf-8") + name.encode("utf-8"),
         )
 
-        return header.serialize(), ciphertext
+        return MessageHeader.serialize(header=header), ciphertext
 
     def receiveMessage(self, name: str, header: bytes, ciphertext: bytes) -> str | None:
-        raise Exception("not implemented!")
-        return
+        messageHeader: MessageHeader = MessageHeader.deserialize(data=header)
+        if name not in self.certs:
+            raise Exception("no certificate for user")
+        if name not in self.conns:
+            sk: bytes = b""  # NOTE: how to determine shared SK?
+            conn: Connection = Connection.RatchetInitBob(
+                SK=sk,
+                bob_dh_key_pair=self.DHs,
+            )
+            self.conns[name] = conn
+        else:
+            conn = self.conns[name]
+        message: str | None = conn.RatchetDecrypt(
+            messageHeader, ciphertext, name.encode("utf-8") + self.name.encode("utf-8")
+        )
+        return message
 
     def report(self, name: str, message: str) -> tuple[str, bytes]:
         raise Exception("not implemented!")
@@ -218,7 +266,8 @@ def KDF_CK(ck: bytes) -> tuple[bytes, bytes]:
     hkdf: HKDF = HKDF(
         SHA256(), length=64, salt=ck, info=b"messenger kdf"
     )  # NOTE: what to use for info?
-    return hkdf.derive(ck)[:32], hkdf.derive(ck)[32:]
+    derived = hkdf.derive(ck)
+    return derived[:32], derived[32:]
 
 
 def DH(DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey) -> bytes:
