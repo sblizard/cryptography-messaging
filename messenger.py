@@ -39,24 +39,50 @@ class Certificate:
 
 
 class Connection:
-    def __init__(
-        self,
-        DHs_sk: EllipticCurvePrivateKey,
-        DHr_pk: EllipticCurvePublicKey,
-    ):
-        self.DHs_sk: EllipticCurvePrivateKey = DHs_sk
-        self.DHr_pk: EllipticCurvePublicKey = DHr_pk
-        self.RK, self.CKs = KDF_RK(rk=b"", dh_out=DH(DHs_sk, DHr_pk))
-        self.CKr: bytes = b""
+    def __init__(self):
+        self.DHs_sk: EllipticCurvePrivateKey | None = None
+        self.DHr_pk: EllipticCurvePublicKey | None = None
+        self.RK: bytes | None = None
+        self.CKs: bytes | None = None
+        self.CKr: bytes | None = None
         self.Ns: int = 0
         self.Nr: int = 0
         self.PN: int = 0
-        self.mk: bytes = b""
+        self.mk: bytes | None = None
+
+    @classmethod
+    def RatchetInitAlice(cls, SK: bytes, bob_dh_public_key: EllipticCurvePublicKey):
+        """Create a new Connection instance initialized as Alice"""
+        conn: Connection = cls()
+        conn.DHs_sk = GENERATE_DH()
+        conn.DHr_pk = bob_dh_public_key
+        conn.RK, conn.CKs = KDF_RK(SK, DH(conn.DHs_sk, conn.DHr_pk))
+        conn.CKr = None
+        conn.Ns = 0
+        conn.Nr = 0
+        conn.PN = 0
+        return conn
+
+    @classmethod
+    def RatchetInitBob(cls, SK: bytes, bob_dh_key_pair: EllipticCurvePrivateKey):
+        """Create a new Connection instance initialized as Bob"""
+        conn: Connection = cls()
+        conn.DHs_sk = bob_dh_key_pair
+        conn.DHr_pk = None
+        conn.RK = SK
+        conn.CKs = None
+        conn.CKr = None
+        conn.Ns = 0
+        conn.Nr = 0
+        conn.PN = 0
+        return conn
 
     def __str__(self):
         return f"Connection(DHs_sk={self.DHs_sk}, DHr_pk={self.DHr_pk}, RK={self.RK}, CKs={self.CKs}, CKr={self.CKr}, Ns={self.Ns}, Nr={self.Nr}, PN={self.PN}, mk={self.mk})"
 
     def RatchetSendKey(self) -> tuple[int, bytes]:
+        if self.CKs is None:
+            raise Exception("CKs is None")
         self.CKs, self.mk = KDF_CK(ck=self.CKs)
         Ns = self.Ns
         self.Ns += 1
@@ -65,6 +91,8 @@ class Connection:
     def RatchetEncrypt(
         self, plaintext: str, associated_data: bytes
     ) -> tuple[MessageHeader, bytes]:
+        if self.DHs_sk is None:
+            raise Exception("DHs_sk is None")
         self.Ns, self.mk = self.RatchetSendKey()
         header: MessageHeader = HEADER(self.DHs_sk, self.PN, self.Ns)
         return header, ENCRYPT(self.mk, plaintext, CONCAT(associated_data, header))
