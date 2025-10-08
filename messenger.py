@@ -38,7 +38,7 @@ class Connection:
     ):
         self.DHs_sk: EllipticCurvePrivateKey = DHs_sk
         self.DHr_pk: EllipticCurvePublicKey = DHr_pk
-        self.RK, self.CKs = self.KDF_RK(dh_out=self.diffieHellman(DHs_sk, DHr_pk))
+        self.RK, self.CKs = self.KDF_RK(dh_out=self.DH_exchange(DHs_sk, DHr_pk))
         self.CKr: bytes = b""
         self.Ns: int = 0
         self.Nr: int = 0
@@ -52,7 +52,7 @@ class Connection:
         rk: bytes = ck
         return ck, rk
 
-    def diffieHellman(
+    def DH_exchange(
         self, DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey
     ) -> bytes:
         return DHs_sk.exchange(ECDH(), DHr_pk)
