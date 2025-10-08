@@ -230,22 +230,28 @@ class MessengerClient:
         return MessageHeader.serialize(header=header), ciphertext
 
     def receiveMessage(self, name: str, header: bytes, ciphertext: bytes) -> str | None:
-        messageHeader: MessageHeader = MessageHeader.deserialize(data=header)
-        if name not in self.certs:
-            raise Exception("no certificate for user")
-        if name not in self.conns:
-            sk: bytes = b""  # NOTE: how to determine shared SK?
-            conn: Connection = Connection.RatchetInitBob(
-                SK=sk,
-                bob_dh_key_pair=self.DHs,
+        try:
+            messageHeader: MessageHeader = MessageHeader.deserialize(data=header)
+            if name not in self.certs:
+                raise Exception("no certificate for user")
+            if name not in self.conns:
+                sk: bytes = b""  # NOTE: how to determine shared SK?
+                conn: Connection = Connection.RatchetInitBob(
+                    SK=sk,
+                    bob_dh_key_pair=self.DHs,
+                )
+                self.conns[name] = conn
+            else:
+                conn = self.conns[name]
+            message: str | None = conn.RatchetDecrypt(
+                messageHeader,
+                ciphertext,
+                name.encode("utf-8") + self.name.encode("utf-8"),
             )
-            self.conns[name] = conn
-        else:
-            conn = self.conns[name]
-        message: str | None = conn.RatchetDecrypt(
-            messageHeader, ciphertext, name.encode("utf-8") + self.name.encode("utf-8")
-        )
-        return message
+            return message
+        except Exception as e:
+            print(f"[{self.name}] Message decryption failed: {e}")
+            return None
 
     def report(self, name: str, message: str) -> tuple[str, bytes]:
         raise Exception("not implemented!")
