@@ -22,6 +22,16 @@ class MessageHeader:
         self.pn = pn
         self.n = n
 
+    def serialize(self) -> bytes:
+        return (
+            self.dh.public_bytes(
+                encoding=serialization.Encoding.X962,
+                format=serialization.PublicFormat.UncompressedPoint,
+            )
+            + self.pn.to_bytes(4, "big")
+            + self.n.to_bytes(4, "big")
+        )
+
 
 class Certificate:
     def __init__(self, name, pk):
@@ -52,11 +62,10 @@ class Connection:
 
     @classmethod
     def RatchetInitAlice(cls, SK: bytes, bob_dh_public_key: EllipticCurvePublicKey):
-        """Create a new Connection instance initialized as Alice"""
         conn: Connection = cls()
         conn.DHs_sk = GENERATE_DH()
         conn.DHr_pk = bob_dh_public_key
-        conn.RK, conn.CKs = KDF_RK(SK, DH(conn.DHs_sk, conn.DHr_pk))
+        conn.RK, conn.CKs = KDF_RK(rk=SK, dh_out=DH(conn.DHs_sk, conn.DHr_pk))
         conn.CKr = None
         conn.Ns = 0
         conn.Nr = 0
@@ -65,7 +74,6 @@ class Connection:
 
     @classmethod
     def RatchetInitBob(cls, SK: bytes, bob_dh_key_pair: EllipticCurvePrivateKey):
-        """Create a new Connection instance initialized as Bob"""
         conn: Connection = cls()
         conn.DHs_sk = bob_dh_key_pair
         conn.DHr_pk = None
@@ -136,7 +144,7 @@ class MessengerClient:
         self.name: str = name
         self.server_signing_pk: EllipticCurvePublicKey = server_signing_pk
         self.server_encryption_pk: EllipticCurvePublicKey = server_encryption_pk
-        self.conns: dict[str, EllipticCurvePublicKey] = {}
+        self.conns: dict[str, Connection] = {}
         self.certs: dict[str, Certificate] = {}
 
         self.DHs: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
@@ -165,8 +173,24 @@ class MessengerClient:
             raise Exception("certificate verification failed")
 
     def sendMessage(self, name: str, message: str) -> tuple[bytes, bytes]:
+        if name not in self.certs:
+            raise Exception("no certificate for user")
+        if name not in self.conns:
+            sk: bytes = b""  # NOTE: how to determine shared SK?
+            conn: Connection = Connection.RatchetInitAlice(
+                SK=sk,
+                bob_dh_public_key=self.certs[name].getPublicKey(),
+            )
+            self.conns[name] = conn
+        else:
+            conn = self.conns[name]
 
-        return b"", b""
+        header, ciphertext = conn.RatchetEncrypt(
+            plaintext=message,
+            associated_data=self.name.encode("utf-8") + name.encode("utf-8"),
+        )
+
+        return header.serialize(), ciphertext
 
     def receiveMessage(self, name: str, header: bytes, ciphertext: bytes) -> str | None:
         raise Exception("not implemented!")
