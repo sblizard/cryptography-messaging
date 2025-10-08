@@ -196,3 +196,11 @@ def ENCRYPT(mk: bytes, plaintext: str, associated_data: bytes) -> bytes:
     nonce: bytes = os.urandom(12)
     ct: bytes = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), associated_data)
     return nonce + ct
+
+
+def DECRYPT(mk: bytes, ciphertext: bytes, associated_data: bytes) -> str:
+    aesgcm: AESGCM = AESGCM(mk)
+    nonce: bytes = ciphertext[:12]
+    ct: bytes = ciphertext[12:]
+    pt: bytes = aesgcm.decrypt(nonce, ct, associated_data)
+    return pt.decode("utf-8")
