@@ -64,16 +64,16 @@ except:
 else:
     error("accepted certificate with incorrect signature")
 
-# print("Testing Reporting")
-# content: str = "inappropriate message contents"
-# reportPT, reportCT = alice.report(name="Bob", message=content)
-# decryptedReport: str = server.decryptReport(ct=reportCT)
-# if decryptedReport != reportPT:
-#     error("report did not decrypt properly")
-#     print(reportPT)
-#     print(decryptedReport)
-# else:
-#     print("Reporting test successful!")
+print("Testing Reporting")
+content: str = "inappropriate message contents"
+reportPT, reportCT = alice.report(name="Bob", message=content)
+decryptedReport: str = server.decryptReport(ct=reportCT)
+if decryptedReport != reportPT:
+    error("report did not decrypt properly")
+    print(reportPT)
+    print(decryptedReport)
+else:
+    print("Reporting test successful!")
 
 print("Testing a conversation")
 header, ct = alice.sendMessage(name="bob", message="Hi Bob!")

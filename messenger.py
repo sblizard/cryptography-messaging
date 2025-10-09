@@ -16,6 +16,23 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
+class Report:
+    def __init__(self, user: str, content: str):
+        self.user = user
+        self.content = content
+
+    def __str__(self):
+        return f"Report(user={self.user}, content={self.content})"
+
+    @staticmethod
+    def serialize(report: "Report") -> bytes:
+        return pickle.dumps(report)
+
+    @staticmethod
+    def deserialize(data: bytes) -> "Report":
+        return pickle.loads(data)
+
+
 class MessageHeader:
     def __init__(self, dh_public_key: EllipticCurvePublicKey, pn: int, n: int):
         self.dh = dh_public_key
@@ -61,6 +78,7 @@ class Certificate:
 
 class Connection:
     def __init__(self):
+        """Initialize an empty connection."""
         self.DHs_sk: EllipticCurvePrivateKey | None = None
         self.DHr_pk: EllipticCurvePublicKey | None = None
         self.RK: bytes | None = None
@@ -73,6 +91,7 @@ class Connection:
 
     @classmethod
     def RatchetInitAlice(cls, SK: bytes, bob_dh_public_key: EllipticCurvePublicKey):
+        """Initialize a connection for Alice."""
         conn: Connection = cls()
         conn.DHs_sk = GENERATE_DH()
         conn.DHr_pk = bob_dh_public_key
@@ -85,6 +104,7 @@ class Connection:
 
     @classmethod
     def RatchetInitBob(cls, SK: bytes, bob_dh_key_pair: EllipticCurvePrivateKey):
+        """Initialize a connection for Bob."""
         conn: Connection = cls()
         conn.DHs_sk = bob_dh_key_pair
         conn.DHr_pk = None
@@ -255,7 +275,10 @@ class MessengerClient:
 
     def report(self, name: str, message: str) -> tuple[str, bytes]:
         raise Exception("not implemented!")
-        return
+        report: Report = Report(name, message)
+        report_bytes: bytes = Report.serialize(report)
+        ct: bytes = report_bytes
+        return message, ct
 
 
 def GENERATE_DH() -> EllipticCurvePrivateKey:
