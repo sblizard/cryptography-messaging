@@ -1,7 +1,6 @@
-import os
-import pickle
-import string
+# internal
 
+# external
 from cryptography.hazmat.primitives.asymmetric.ec import (
     EllipticCurvePrivateKey,
     EllipticCurvePublicKey,
@@ -14,6 +13,10 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+# built-in
+import os
+import pickle
 
 
 class Report:
@@ -35,9 +38,9 @@ class Report:
 
 class MessageHeader:
     def __init__(self, dh_public_key: EllipticCurvePublicKey, pn: int, n: int):
-        self.dh = dh_public_key
-        self.pn = pn
-        self.n = n
+        self.dh: EllipticCurvePublicKey = dh_public_key
+        self.pn: int = pn
+        self.n: int = n
 
     def __str__(self):
         return f"MessageHeader(dh={self.dh}, pn={self.pn}, n={self.n})"
@@ -269,11 +272,11 @@ class MessengerClient:
                 name.encode("utf-8") + self.name.encode("utf-8"),
             )
             return message
-        except Exception as e:
-            print(f"[{self.name}] Message decryption failed: {e}")
+        except Exception:
             return None
 
     def report(self, name: str, message: str) -> tuple[str, bytes]:
+        # NOTE: How to impliment El Gamal with Epilliptic Curve?
         raise Exception("not implemented!")
         report: Report = Report(name, message)
         report_bytes: bytes = Report.serialize(report)
