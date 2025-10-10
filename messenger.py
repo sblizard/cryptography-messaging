@@ -227,7 +227,7 @@ class MessengerClient:
                 ),
                 signature_algorithm=ECDSA(SHA256()),
             )
-            # NOTE: Is it okay to store a certiifcate under user name? ie can we assume unique user names?
+            # NOTE: Is it okay to store a certificate under user name? ie can we assume unique user names?
             self.certs[certificate.getUserName()] = certificate
         except:
             raise Exception("certificate verification failed")
@@ -236,7 +236,9 @@ class MessengerClient:
         if name not in self.certs:
             raise Exception("no certificate for user")
         if name not in self.conns:
-            sk: bytes = b""  # NOTE: how to determine shared SK?
+            sk: bytes = b""
+            # NOTE: how to determine shared SK?
+            # NOTE: Use 2-sided AKE?
             conn: Connection = Connection.RatchetInitAlice(
                 SK=sk,
                 bob_dh_public_key=self.certs[name].getPublicKey(),
