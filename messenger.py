@@ -37,31 +37,51 @@ class Report:
 
 
 class MessageHeader:
-    def __init__(self, dh_public_key: EllipticCurvePublicKey, pn: int, n: int):
+    def __init__(
+        self,
+        dh_public_key: EllipticCurvePublicKey,
+        pn: int,
+        n: int,
+        encrypted_sk: bytes | None = None,
+    ):
         self.dh: EllipticCurvePublicKey = dh_public_key
         self.pn: int = pn
         self.n: int = n
+        self.encrypted_sk: bytes | None = encrypted_sk
 
     def __str__(self):
-        return f"MessageHeader(dh={self.dh}, pn={self.pn}, n={self.n})"
+        return f"MessageHeader(dh={self.dh}, pn={self.pn}, n={self.n}, encrypted_sk={self.encrypted_sk})"
 
     @staticmethod
     def serialize(header: "MessageHeader") -> bytes:
-        return (
-            header.dh.public_bytes(
-                encoding=serialization.Encoding.X962,
-                format=serialization.PublicFormat.UncompressedPoint,
-            )
-            + header.pn.to_bytes(4, "big")
-            + header.n.to_bytes(4, "big")
+        dh_bytes = header.dh.public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint,
         )
+        pn_bytes = header.pn.to_bytes(4, "big")
+        n_bytes = header.n.to_bytes(4, "big")
+
+        if header.encrypted_sk is not None:
+            encrypted_sk_len = len(header.encrypted_sk).to_bytes(4, "big")
+            return (
+                dh_bytes + pn_bytes + n_bytes + encrypted_sk_len + header.encrypted_sk
+            )
+        else:
+            encrypted_sk_len = (0).to_bytes(4, "big")
+            return dh_bytes + pn_bytes + n_bytes + encrypted_sk_len
 
     @staticmethod
     def deserialize(data: bytes) -> "MessageHeader":
         dh_pk = EllipticCurvePublicKey.from_encoded_point(SECP256R1(), data[:65])
         pn = int.from_bytes(data[65:69], "big")
         n = int.from_bytes(data[69:73], "big")
-        return MessageHeader(dh_pk, pn, n)
+        encrypted_sk_len = int.from_bytes(data[73:77], "big")
+
+        if encrypted_sk_len > 0:
+            encrypted_sk = data[77 : 77 + encrypted_sk_len]
+            return MessageHeader(dh_pk, pn, n, encrypted_sk)
+        else:
+            return MessageHeader(dh_pk, pn, n)
 
 
 class Certificate:
@@ -91,6 +111,7 @@ class Connection:
         self.Nr: int = 0
         self.PN: int = 0
         self.mk: bytes | None = None
+        self.sk_encrypted: bytes | None = None
 
     @classmethod
     def RatchetInitAlice(cls, SK: bytes, bob_dh_public_key: EllipticCurvePublicKey):
@@ -135,8 +156,20 @@ class Connection:
     ) -> tuple[MessageHeader, bytes]:
         if self.DHs_sk is None:
             raise Exception("DHs_sk is None")
+
+        is_first_message: bool = self.Ns == 0
+        encrypted_sk_to_send: bytes | None = (
+            self.sk_encrypted if is_first_message else None
+        )
+
         self.Ns, self.mk = self.RatchetSendKey()
-        header: MessageHeader = HEADER(self.DHs_sk, self.PN, self.Ns)
+        header: MessageHeader = HEADER(
+            self.DHs_sk, self.PN, self.Ns, encrypted_sk_to_send
+        )
+
+        if is_first_message:
+            self.sk = None
+
         return header, ENCRYPT(self.mk, plaintext, CONCAT(associated_data, header))
 
     def RatchetReceiveKey(self, header: MessageHeader) -> bytes:
@@ -227,7 +260,6 @@ class MessengerClient:
                 ),
                 signature_algorithm=ECDSA(SHA256()),
             )
-            # NOTE: Is it okay to store a certificate under user name? ie can we assume unique user names? No.
             self.certs[certificate.getUserName()] = certificate
         except:
             raise Exception("certificate verification failed")
@@ -236,14 +268,14 @@ class MessengerClient:
         if name not in self.certs:
             raise Exception("no certificate for user")
         if name not in self.conns:
-            sk: bytes = b""
-            # NOTE: how to determine shared SK?
-            # NOTE: Use 2-sided AKE?
-            # NOTE: Use traditional PKE.
+            bob_public_key: EllipticCurvePublicKey = self.certs[name].getPublicKey()
+            sk: bytes = os.urandom(32)
+            sk_encrypted: bytes = encrypt_with_public_key(sk, bob_public_key)
             conn: Connection = Connection.RatchetInitAlice(
                 SK=sk,
-                bob_dh_public_key=self.certs[name].getPublicKey(),
+                bob_dh_public_key=bob_public_key,
             )
+            conn.sk_encrypted = sk_encrypted
             self.conns[name] = conn
         else:
             conn = self.conns[name]
@@ -261,7 +293,12 @@ class MessengerClient:
             if name not in self.certs:
                 raise Exception("no certificate for user")
             if name not in self.conns:
-                sk: bytes = b""  # NOTE: how to determine shared SK?
+                if messageHeader.encrypted_sk is not None:
+                    sk: bytes = decrypt_with_private_key(
+                        messageHeader.encrypted_sk, self.DHs
+                    )
+                else:
+                    sk = b""
                 conn: Connection = Connection.RatchetInitBob(
                     SK=sk,
                     bob_dh_key_pair=self.DHs,
@@ -315,19 +352,17 @@ def DH(DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey) -> bytes
     return DHs_sk.exchange(ECDH(), DHr_pk)
 
 
-def HEADER(dh_pair: EllipticCurvePrivateKey, pn: int, ns: int) -> MessageHeader:
-    return MessageHeader(dh_pair.public_key(), pn, ns)
+def HEADER(
+    dh_pair: EllipticCurvePrivateKey,
+    pn: int,
+    ns: int,
+    encrypted_sk: bytes | None = None,
+) -> MessageHeader:
+    return MessageHeader(dh_pair.public_key(), pn, ns, encrypted_sk)
 
 
 def CONCAT(associated_data: bytes, header: MessageHeader) -> bytes:
-    header_bytes: bytes = (
-        header.dh.public_bytes(
-            encoding=serialization.Encoding.X962,
-            format=serialization.PublicFormat.UncompressedPoint,
-        )
-        + header.pn.to_bytes(4, "big")
-        + header.n.to_bytes(4, "big")
-    )
+    header_bytes = MessageHeader.serialize(header)
     ad_length = len(associated_data).to_bytes(4, "big")
 
     return ad_length + associated_data + header_bytes
@@ -346,3 +381,56 @@ def DECRYPT(mk: bytes, ciphertext: bytes, associated_data: bytes) -> str:
     ct: bytes = ciphertext[12:]
     pt: bytes = aesgcm.decrypt(nonce, ct, associated_data)
     return pt.decode("utf-8")
+
+
+def encrypt_with_public_key(data: bytes, public_key: EllipticCurvePublicKey) -> bytes:
+    epheral_private_key: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
+    epheral_public_key: EllipticCurvePublicKey = epheral_private_key.public_key()
+
+    shared_key = epheral_private_key.exchange(ECDH(), public_key)
+
+    hkdf: HKDF = HKDF(
+        SHA256(),
+        length=32,
+        salt=None,
+        info=None,
+    )
+    aes_key: bytes = hkdf.derive(shared_key)
+
+    aesgcm: AESGCM = AESGCM(aes_key)
+    nonce: bytes = os.urandom(12)
+    ct: bytes = aesgcm.encrypt(nonce, data, None)
+
+    return (
+        epheral_public_key.public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint,
+        )
+        + nonce
+        + ct
+    )
+
+
+def decrypt_with_private_key(
+    encrypted_data: bytes, private_key: EllipticCurvePrivateKey
+) -> bytes:
+    epheral_public_key = EllipticCurvePublicKey.from_encoded_point(
+        SECP256R1(), encrypted_data[:65]
+    )
+    nonce = encrypted_data[65:77]
+    ct = encrypted_data[77:]
+
+    shared_key = private_key.exchange(ECDH(), epheral_public_key)
+
+    hkdf: HKDF = HKDF(
+        SHA256(),
+        length=32,
+        salt=None,
+        info=None,
+    )
+    aes_key: bytes = hkdf.derive(shared_key)
+
+    aesgcm: AESGCM = AESGCM(aes_key)
+    pt: bytes = aesgcm.decrypt(nonce, ct, None)
+
+    return pt
