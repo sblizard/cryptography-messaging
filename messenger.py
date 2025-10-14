@@ -227,7 +227,7 @@ class MessengerClient:
                 ),
                 signature_algorithm=ECDSA(SHA256()),
             )
-            # NOTE: Is it okay to store a certificate under user name? ie can we assume unique user names?
+            # NOTE: Is it okay to store a certificate under user name? ie can we assume unique user names? No.
             self.certs[certificate.getUserName()] = certificate
         except:
             raise Exception("certificate verification failed")
@@ -239,6 +239,7 @@ class MessengerClient:
             sk: bytes = b""
             # NOTE: how to determine shared SK?
             # NOTE: Use 2-sided AKE?
+            # NOTE: Use traditional PKE.
             conn: Connection = Connection.RatchetInitAlice(
                 SK=sk,
                 bob_dh_public_key=self.certs[name].getPublicKey(),
@@ -279,6 +280,8 @@ class MessengerClient:
 
     def report(self, name: str, message: str) -> tuple[str, bytes]:
         # NOTE: How to impliment El Gamal with Epilliptic Curve?
+        # NOTE: You can do exponentiation in EC
+        # NOTE: Find the operatrions that will have to be used for hashed el gamal and look at the operations available and then figure out ow to use what i have to do what i want.
         raise Exception("not implemented!")
         report: Report = Report(name, message)
         report_bytes: bytes = Report.serialize(report)
@@ -292,17 +295,18 @@ def GENERATE_DH() -> EllipticCurvePrivateKey:
 
 def KDF_RK(rk: bytes, dh_out: bytes) -> tuple[bytes, bytes]:
     hkdf: HKDF = HKDF(
-        SHA256(), length=32, salt=rk, info=b"messenger kdf"
-    )  # NOTE: what to use for info?
+        SHA256(),
+        length=32,
+        salt=rk,
+        info=None,
+    )
     ck: bytes = hkdf.derive(dh_out)
     rk = ck
     return ck, rk
 
 
 def KDF_CK(ck: bytes) -> tuple[bytes, bytes]:
-    hkdf: HKDF = HKDF(
-        SHA256(), length=64, salt=ck, info=b"messenger kdf"
-    )  # NOTE: what to use for info?
+    hkdf: HKDF = HKDF(SHA256(), length=64, salt=ck, info=None)
     derived = hkdf.derive(ck)
     return derived[:32], derived[32:]
 
