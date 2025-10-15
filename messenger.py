@@ -1,6 +1,8 @@
 # internal
 
 # external
+import hashlib
+import hmac
 from cryptography.hazmat.primitives.asymmetric.ec import (
     EllipticCurvePrivateKey,
     EllipticCurvePublicKey,
@@ -168,7 +170,7 @@ class Connection:
         )
 
         if is_first_message:
-            self.sk = None
+            self.sk_encrypted = None
 
         return header, ENCRYPT(self.mk, plaintext, CONCAT(associated_data, header))
 
@@ -332,20 +334,19 @@ def GENERATE_DH() -> EllipticCurvePrivateKey:
 
 def KDF_RK(rk: bytes, dh_out: bytes) -> tuple[bytes, bytes]:
     hkdf: HKDF = HKDF(
-        SHA256(),
-        length=32,
+        algorithm=SHA256(),
+        length=64,
         salt=rk,
         info=None,
     )
-    ck: bytes = hkdf.derive(dh_out)
-    rk = ck
-    return ck, rk
+    out: bytes = hkdf.derive(dh_out)
+    return out[:32], out[32:]
 
 
 def KDF_CK(ck: bytes) -> tuple[bytes, bytes]:
-    hkdf: HKDF = HKDF(SHA256(), length=64, salt=ck, info=None)
-    derived = hkdf.derive(ck)
-    return derived[:32], derived[32:]
+    new_ck: bytes = hmac.new(ck, b"\x00", hashlib.sha256).digest()
+    mk: bytes = hmac.new(ck, b"\x01", hashlib.sha256).digest()
+    return new_ck, mk
 
 
 def DH(DHs_sk: EllipticCurvePrivateKey, DHr_pk: EllipticCurvePublicKey) -> bytes:
