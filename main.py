@@ -76,8 +76,6 @@ else:
     print("Reporting test successful!")
 
 print("Testing a conversation")
-print("Alice certs:", alice.certs.keys())
-print("Bob certs:", bob.certs.keys())
 header, ct = alice.sendMessage(name="bob", message="Hi Bob!")
 msg: str | None = bob.receiveMessage(name="alice", header=header, ciphertext=ct)
 if msg != "Hi Bob!":

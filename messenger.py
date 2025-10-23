@@ -312,8 +312,12 @@ class MessengerClient:
             else:
                 conn = self.conns[name]
 
-            if messageHeader.n != conn.Nr:
-                return None
+            if not _same_pub(messageHeader.dh, conn.DHr_pk):
+                if messageHeader.n != 0:
+                    return None
+            else:
+                if messageHeader.n != conn.Nr:
+                    return None
 
             msg = conn.RatchetDecrypt(messageHeader, ciphertext, b"")
             return msg
