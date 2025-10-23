@@ -547,22 +547,40 @@ class TestProtocolVulnerabilities:
         alice.receiveCertificate(bob_cert, bob_sig)
         bob.receiveCertificate(alice_cert, alice_sig)
 
-        # Send initial message
+        # Send initial message from Alice to Bob
         header1, ct1 = alice.sendMessage("bob", "Message 1")
         msg1 = bob.receiveMessage("alice", header1, ct1)
         assert msg1 == "Message 1"
-        # Capture current state
-        old_alice_conn = alice.conns["bob"]
-        old_dh_key = old_alice_conn.DHs_sk
 
-        # Send more messages to trigger DH ratchet
-        for i in range(5):
-            header, ct = alice.sendMessage("bob", f"Message {i + 2}")
-            bob.receiveMessage("alice", header, ct)
+        # Capture Alice's initial DH key
+        old_alice_dh_key = alice.conns["bob"].DHs_sk
+        assert old_alice_dh_key is not None, "Alice's DH key should not be None"
+
+        # Bob sends a message back to Alice - this should trigger DH ratchet
+        header2, ct2 = bob.sendMessage("alice", "Reply from Bob")
+        msg2 = alice.receiveMessage("bob", header2, ct2)
+        assert msg2 == "Reply from Bob"
+
+        # Now Alice's DH key should have changed due to receiving Bob's message
+        new_alice_dh_key = alice.conns["bob"].DHs_sk
+        assert new_alice_dh_key is not None, "Alice's new DH key should not be None"
+
+        # Compare the private key bytes to check if they're different
+        old_key_bytes = old_alice_dh_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        new_key_bytes = new_alice_dh_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
 
         # DH key should have changed (forward secrecy)
-        new_dh_key = alice.conns["bob"].DHs_sk
-        assert old_dh_key != new_dh_key
+        assert (
+            old_key_bytes != new_key_bytes
+        ), "DH key should change for forward secrecy"
 
     def test_message_ordering_attack(self):
         """Test resistance to message ordering attacks."""

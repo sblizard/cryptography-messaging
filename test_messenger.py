@@ -806,23 +806,26 @@ class TestSecurityVulnerabilities:
         alice.receiveCertificate(bob_cert, bob_sig)
         bob.receiveCertificate(alice_cert, alice_sig)
 
-        # Send messages
+        # Send initial message from Alice to Bob
         header1, ct1 = alice.sendMessage("bob", "Old message")
+        msg1 = bob.receiveMessage("alice", header1, ct1)
+        assert msg1 == "Old message"
 
-        # Simulate key compromise by saving current state
-        old_alice_dh = alice.DHs
-        old_bob_dh = bob.DHs
+        # Capture the connection DH keys before ratchet
+        old_alice_conn_dh = alice.conns["bob"].DHs_sk
 
-        # Send more messages to advance ratchet
-        for i in range(5):
-            header, ct = alice.sendMessage("bob", f"Message {i}")
-            bob.receiveMessage("alice", header, ct)
+        # Bob sends reply to trigger DH ratchet in Alice
+        header2, ct2 = bob.sendMessage("alice", "Reply from Bob")
+        msg2 = alice.receiveMessage("bob", header2, ct2)
+        assert msg2 == "Reply from Bob"
 
-        # Even with current keys, old message should not be decryptable
-        # This is a conceptual test - in practice, forward secrecy means
-        # old message keys are deleted, which we can verify by checking
-        # that the connection state has evolved
-        assert alice.DHs != old_alice_dh or bob.DHs != old_bob_dh
+        # Check that Alice's connection DH key has changed (forward secrecy)
+        new_alice_conn_dh = alice.conns["bob"].DHs_sk
+
+        # Keys should be different objects (DH ratchet occurred)
+        assert (
+            old_alice_conn_dh is not new_alice_conn_dh
+        ), "DH key should change for forward secrecy"
 
     def test_malformed_input_handling(self):
         """Test handling of various malformed inputs."""

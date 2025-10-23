@@ -1,4 +1,0 @@
-# file: /Users/seanblizard/Documents/Github/Cryptography Messenger/messenger.py
-# hypothesis_version: 6.142.3
-
-[b'\x00', b'\x01', b'COMP537-Report-Enc-v1', 'CKr is None', 'CKs is None', 'DHs_sk is None', 'MessageHeader', 'Report', 'big', 'messenger encryption', 'messenger ratchet', 'utf-8']
