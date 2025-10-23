@@ -120,13 +120,8 @@ class Connection:
         conn = cls()
         conn.DHs_sk = GENERATE_DH()
         conn.DHr_pk = bob_dh_public_key
-
-        # Initial shared secret must match Bob’s: DH(alice.conn.DHs_sk, bob.static)
         SK = DH(conn.DHs_sk, conn.DHr_pk)
-
-        # Root-key derivation (your KDF_RK uses salt=rk and ikm=dh_out; using SK for both is fine here)
         conn.RK, conn.CKs = KDF_RK(rk=SK, dh_out=SK)
-
         conn.CKr = None
         conn.Ns = 0
         conn.Nr = 0
@@ -209,8 +204,33 @@ class MessengerServer:
         return f"MessengerServer(server_signing_key={self.server_signing_key}, server_decryption_key={self.server_decryption_key})"
 
     def decryptReport(self, ct: bytes) -> str:
-        raise Exception("not implemented!")
-        return
+        eph_pk: EllipticCurvePublicKey = EllipticCurvePublicKey.from_encoded_point(
+            SECP256R1(), ct[:65]
+        )
+        iv: bytes = ct[65:77]
+        encrypted: bytes = ct[77:]
+
+        shared: bytes = self.server_decryption_key.exchange(ECDH(), eph_pk)
+
+        hkdf_key: bytes = HKDF(
+            algorithm=SHA256(),
+            length=32,
+            salt=None,
+            info=b"COMP537-Report-Enc-v1",
+        ).derive(shared)
+
+        aesgcm: AESGCM = AESGCM(hkdf_key)
+        report_bytes = aesgcm.decrypt(
+            iv,
+            encrypted,
+            eph_pk.public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.UncompressedPoint,
+            ),
+        )
+
+        report: Report = Report.deserialize(report_bytes)
+        return str(report)
 
     def signCert(self, cert: Certificate) -> bytes:
         public_key_bytes: bytes = cert.getPublicKey().public_bytes(
@@ -302,14 +322,29 @@ class MessengerClient:
             return None
 
     def report(self, name: str, message: str) -> tuple[str, bytes]:
-        # NOTE: How to impliment El Gamal with Epilliptic Curve?
-        # NOTE: You can do exponentiation in EC
-        # NOTE: Find the operatrions that will have to be used for hashed el gamal and look at the operations available and then figure out ow to use what i have to do what i want.
-        raise Exception("not implemented!")
         report: Report = Report(name, message)
         report_bytes: bytes = Report.serialize(report)
-        ct: bytes = report_bytes
-        return message, ct
+
+        eph_sk: EllipticCurvePrivateKey = generate_private_key(SECP256R1())
+        eph_pk_bytes: bytes = eph_sk.public_key().public_bytes(
+            serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+        )
+
+        shared: bytes = eph_sk.exchange(ECDH(), self.server_encryption_pk)
+
+        hkdf_key: bytes = HKDF(
+            algorithm=SHA256(),
+            length=32,
+            salt=None,
+            info=b"COMP537-Report-Enc-v1",
+        ).derive(shared)
+
+        iv: bytes = os.urandom(12)
+        aesgcm: AESGCM = AESGCM(hkdf_key)
+        ciphertext: bytes = aesgcm.encrypt(iv, report_bytes, eph_pk_bytes)
+
+        full_ct: bytes = eph_pk_bytes + iv + ciphertext
+        return str(report), full_ct
 
 
 def GENERATE_DH() -> EllipticCurvePrivateKey:
@@ -321,7 +356,7 @@ def KDF_RK(rk: bytes, dh_out: bytes) -> tuple[bytes, bytes]:
         algorithm=SHA256(),
         length=64,
         salt=rk,
-        info=None,
+        info="messenger ratchet".encode("utf-8"),
     )
     out: bytes = hkdf.derive(dh_out)
     return out[:32], out[32:]
@@ -378,7 +413,7 @@ def encrypt_with_public_key(data: bytes, public_key: EllipticCurvePublicKey) -> 
         SHA256(),
         length=32,
         salt=None,
-        info=None,
+        info="messenger encryption".encode("utf-8"),
     )
     aes_key: bytes = hkdf.derive(shared_key)
 
@@ -411,7 +446,7 @@ def decrypt_with_private_key(
         SHA256(),
         length=32,
         salt=None,
-        info=None,
+        info="messenger encryption".encode("utf-8"),
     )
     aes_key: bytes = hkdf.derive(shared_key)
 
