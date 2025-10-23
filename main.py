@@ -76,6 +76,8 @@ else:
 #     print("Reporting test successful!")
 
 print("Testing a conversation")
+print("Alice certs:", alice.certs.keys())
+print("Bob certs:", bob.certs.keys())
 header, ct = alice.sendMessage(name="bob", message="Hi Bob!")
 msg: str | None = bob.receiveMessage(name="alice", header=header, ciphertext=ct)
 if msg != "Hi Bob!":
@@ -84,26 +86,31 @@ if msg != "Hi Bob!":
 header, ct = alice.sendMessage(name="bob", message="Hi again Bob!")
 msg = bob.receiveMessage(name="alice", header=header, ciphertext=ct)
 if msg != "Hi again Bob!":
+    print("got:", msg)
     error("message 2  was not decrypted correctly")
 
 header, ct = bob.sendMessage(name="alice", message="Hey Alice!")
 msg = alice.receiveMessage(name="bob", header=header, ciphertext=ct)
 if msg != "Hey Alice!":
+    print("got:", msg)
     error("message 3 was not decrypted correctly")
 
 header, ct = bob.sendMessage(name="alice", message="Can't talk now")
 msg = alice.receiveMessage(name="bob", header=header, ciphertext=ct)
 if msg != "Can't talk now":
+    print("got:", msg)
     error("message 4 was not decrypted correctly")
 
 header, ct = bob.sendMessage(name="alice", message="Started the homework too late :(")
 msg = alice.receiveMessage(name="bob", header=header, ciphertext=ct)
 if msg != "Started the homework too late :(":
+    print("got:", msg)
     error("message 5 was not decrypted correctly")
 
 header, ct = alice.sendMessage(name="bob", message="Ok, bye Bob!")
 msg = bob.receiveMessage(name="alice", header=header, ciphertext=ct)
 if msg != "Ok, bye Bob!":
+    print("got:", msg)
     error("message 6  was not decrypted correctly")
 
 header, ct = bob.sendMessage(
@@ -111,6 +118,7 @@ header, ct = bob.sendMessage(
 )
 msg = alice.receiveMessage(name="bob", header=header, ciphertext=ct)
 if msg != "I'll remember to start early next time!":
+    print("got:", msg)
     error("message 7 was not decrypted correctly")
 
 print("conversation completed!")

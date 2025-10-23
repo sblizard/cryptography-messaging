@@ -116,12 +116,17 @@ class Connection:
         self.sk_encrypted: bytes | None = None
 
     @classmethod
-    def RatchetInitAlice(cls, SK: bytes, bob_dh_public_key: EllipticCurvePublicKey):
-        """Initialize a connection for Alice."""
-        conn: Connection = cls()
+    def RatchetInitAliceFromScratch(cls, bob_dh_public_key: EllipticCurvePublicKey):
+        conn = cls()
         conn.DHs_sk = GENERATE_DH()
         conn.DHr_pk = bob_dh_public_key
-        conn.RK, conn.CKs = KDF_RK(rk=SK, dh_out=DH(conn.DHs_sk, conn.DHr_pk))
+
+        # Initial shared secret must match Bob’s: DH(alice.conn.DHs_sk, bob.static)
+        SK = DH(conn.DHs_sk, conn.DHr_pk)
+
+        # Root-key derivation (your KDF_RK uses salt=rk and ikm=dh_out; using SK for both is fine here)
+        conn.RK, conn.CKs = KDF_RK(rk=SK, dh_out=SK)
+
         conn.CKr = None
         conn.Ns = 0
         conn.Nr = 0
@@ -158,24 +163,14 @@ class Connection:
     ) -> tuple[MessageHeader, bytes]:
         if self.DHs_sk is None:
             raise Exception("DHs_sk is None")
-
-        is_first_message: bool = self.Ns == 0
-        encrypted_sk_to_send: bytes | None = (
-            self.sk_encrypted if is_first_message else None
-        )
-
-        self.Ns, self.mk = self.RatchetSendKey()
-        header: MessageHeader = HEADER(
-            self.DHs_sk, self.PN, self.Ns, encrypted_sk_to_send
-        )
-
-        if is_first_message:
-            self.sk_encrypted = None
-
-        return header, ENCRYPT(self.mk, plaintext, CONCAT(associated_data, header))
+        Ns, mk = self.RatchetSendKey()
+        header: MessageHeader = HEADER(self.DHs_sk, self.PN, Ns, None)
+        ct = ENCRYPT(mk, plaintext, CONCAT(associated_data, header))
+        self.mk = None
+        return header, ct
 
     def RatchetReceiveKey(self, header: MessageHeader) -> bytes:
-        if header.dh != self.DHr_pk:
+        if not _same_pub(header.dh, self.DHr_pk):
             self.DHRatchet(header)
         if self.CKr is None:
             raise Exception("CKr is None")
@@ -263,57 +258,46 @@ class MessengerClient:
                 signature_algorithm=ECDSA(SHA256()),
             )
             self.certs[certificate.getUserName()] = certificate
-        except:
-            raise Exception("certificate verification failed")
+        except Exception as e:
+            raise Exception(f"certificate verification failed error: {e}")
 
     def sendMessage(self, name: str, message: str) -> tuple[bytes, bytes]:
         if name not in self.certs:
-            raise Exception("no certificate for user")
+            raise Exception(
+                f"No certificate found for user '{name}'. Did you call receiveCertificate()?"
+            )
+
         if name not in self.conns:
             bob_public_key: EllipticCurvePublicKey = self.certs[name].getPublicKey()
-            sk: bytes = os.urandom(32)
-            sk_encrypted: bytes = encrypt_with_public_key(sk, bob_public_key)
-            conn: Connection = Connection.RatchetInitAlice(
-                SK=sk,
-                bob_dh_public_key=bob_public_key,
-            )
-            conn.sk_encrypted = sk_encrypted
+            conn: Connection = Connection.RatchetInitAliceFromScratch(bob_public_key)
             self.conns[name] = conn
         else:
             conn = self.conns[name]
 
-        header, ciphertext = conn.RatchetEncrypt(
-            plaintext=message,
-            associated_data=self.name.encode("utf-8") + name.encode("utf-8"),
-        )
-
-        return MessageHeader.serialize(header=header), ciphertext
+        header, ciphertext = conn.RatchetEncrypt(plaintext=message, associated_data=b"")
+        return MessageHeader.serialize(header), ciphertext
 
     def receiveMessage(self, name: str, header: bytes, ciphertext: bytes) -> str | None:
         try:
-            messageHeader: MessageHeader = MessageHeader.deserialize(data=header)
+            messageHeader: MessageHeader = MessageHeader.deserialize(header)
             if name not in self.certs:
                 raise Exception("no certificate for user")
+
             if name not in self.conns:
-                if messageHeader.encrypted_sk is not None:
-                    sk: bytes = decrypt_with_private_key(
-                        messageHeader.encrypted_sk, self.DHs
-                    )
-                else:
-                    sk = b""
+                sk: bytes = self.DHs.exchange(ECDH(), messageHeader.dh)
                 conn: Connection = Connection.RatchetInitBob(
-                    SK=sk,
-                    bob_dh_key_pair=self.DHs,
+                    SK=sk, bob_dh_key_pair=self.DHs
                 )
                 self.conns[name] = conn
             else:
                 conn = self.conns[name]
-            message: str | None = conn.RatchetDecrypt(
-                messageHeader,
-                ciphertext,
-                name.encode("utf-8") + self.name.encode("utf-8"),
-            )
-            return message
+
+            if messageHeader.n != conn.Nr:
+                return None
+
+            msg = conn.RatchetDecrypt(messageHeader, ciphertext, b"")
+            return msg
+
         except Exception:
             return None
 
@@ -435,3 +419,18 @@ def decrypt_with_private_key(
     pt: bytes = aesgcm.decrypt(nonce, ct, None)
 
     return pt
+
+
+def _pk_bytes(pk: EllipticCurvePublicKey) -> bytes:
+    return pk.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+
+
+def _same_pub(
+    a: EllipticCurvePublicKey | None, b: EllipticCurvePublicKey | None
+) -> bool:
+    if a is None or b is None:
+        return False
+    return _pk_bytes(a) == _pk_bytes(b)
